@@ -1,8 +1,7 @@
 import type { CollectionConfig } from 'payload'
+// import { deleteFromSearch } from '@/search/hooks/deleteFromSearch'
 
-import { authenticated } from '../../access/authenticated'
-import { authenticatedOrPublished } from '../../access/authenticatedOrPublished'
-import { Archive } from '../../blocks/ArchiveBlock/config'
+import { isAdmin, isEditor, anyone } from '@/access'
 import { CallToAction } from '../../blocks/CallToAction/config'
 import { Content } from '../../blocks/Content/config'
 import { FormBlock } from '../../blocks/Form/config'
@@ -20,14 +19,15 @@ import {
   OverviewField,
   PreviewField,
 } from '@payloadcms/plugin-seo/fields'
+import { getServerSideURL } from '@/utilities/getURL'
 
 export const Pages: CollectionConfig<'pages'> = {
   slug: 'pages',
   access: {
-    create: authenticated,
-    delete: authenticated,
-    read: authenticatedOrPublished,
-    update: authenticated,
+    create: isEditor,
+    delete: isAdmin,
+    read: anyone,
+    update: isEditor,
   },
   // This config controls what's populated by default when a page is referenced
   // https://payloadcms.com/docs/queries/select#defaultpopulate-collection-config-property
@@ -39,28 +39,51 @@ export const Pages: CollectionConfig<'pages'> = {
   admin: {
     defaultColumns: ['title', 'slug', 'updatedAt'],
     livePreview: {
-      url: ({ data, req }) => {
+      url: ({ data }) => {
         const path = generatePreviewPath({
           slug: typeof data?.slug === 'string' ? data.slug : '',
           collection: 'pages',
-          req,
         })
 
-        return path
+        return `${getServerSideURL()}${path}`
       },
     },
-    preview: (data, { req }) =>
-      generatePreviewPath({
+    preview: (data) => {
+      const path = generatePreviewPath({
         slug: typeof data?.slug === 'string' ? data.slug : '',
         collection: 'pages',
-        req,
-      }),
+      })
+
+      return `${getServerSideURL()}${path}`
+    },
     useAsTitle: 'title',
   },
   fields: [
     {
       name: 'title',
       type: 'text',
+      required: true,
+      localized: true,
+      defaultValue: '',
+    },
+    {
+      name: 'pageType',
+      type: 'select',
+      options: [
+        {
+          label: 'News/Events',
+          value: 'news-events',
+        },
+        {
+          label: 'Form',
+          value: 'form',
+        },
+        {
+          label: 'Basic',
+          value: 'basic',
+        },
+      ],
+      defaultValue: 'basic',
       required: true,
     },
     {
@@ -75,7 +98,7 @@ export const Pages: CollectionConfig<'pages'> = {
             {
               name: 'layout',
               type: 'blocks',
-              blocks: [CallToAction, Content, MediaBlock, Archive, FormBlock],
+              blocks: [CallToAction, Content, MediaBlock, FormBlock],
               required: true,
               admin: {
                 initCollapsed: true,
@@ -99,7 +122,6 @@ export const Pages: CollectionConfig<'pages'> = {
             MetaImageField({
               relationTo: 'media',
             }),
-
             MetaDescriptionField({}),
             PreviewField({
               // if the `generateUrl` function is configured
@@ -123,17 +145,60 @@ export const Pages: CollectionConfig<'pages'> = {
     ...slugField(),
   ],
   hooks: {
-    afterChange: [revalidatePage],
+    afterChange: [
+      revalidatePage,
+      // async ({ doc, req, operation }) => {
+      //   console.log('operation', operation)
+      //   if (!doc.title) return
+      //   const collectionId = doc.pageType === 'news-events' ? 3 : 4
+
+      //   const docs = await req.payload.find({
+      //     collection: 'searchItems',
+      //     where: {
+      //       docId: {
+      //         equals: doc.id,
+      //       },
+      //     },
+      //   })
+
+      //   // await req.payload.create({
+      //   //   collection: 'searchItems',
+      //   //   data: {
+      //   //     title: doc.title,
+      //   //     slug: doc.slug,
+      //   //     collection,
+      //   //     description: doc.meta.description,
+      //   //     categories: [],
+      //   //   },
+      //   // })
+      // },
+    ],
     beforeChange: [populatePublishedAt],
+    // beforeDelete: [revalidateDelete],
     afterDelete: [revalidateDelete],
+    // afterDelete: [
+    //   async ({ doc, req }) => {
+    //     const collectionID = doc.pageType === 'news-events' ? 3 : 4
+    //     deleteFromSearch({
+    //       searchItemID: doc.id * 100 + collectionID,
+    //       req,
+    //       collectionID,
+    //     })
+    //   },
+    // ],
   },
   versions: {
     drafts: {
       autosave: {
-        interval: 100, // We set this interval for optimal live preview
+        interval: 5000, // We set this interval for optimal live preview
       },
-      schedulePublish: true,
     },
     maxPerDoc: 50,
   },
 }
+
+/*
+
+We need to change it based on:
+
+*/
